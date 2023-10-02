@@ -1,4 +1,4 @@
-# xcode-versa
+# 🔄 xcode-versa
 
 `xcode-versa` is a CLI tool designed to provide developers an effortless way to manage multiple Xcode versions on macOS. This tool simplifies the process of switching between Xcode versions, viewing the active version, and initiating downloads for desired versions—all from the comfort of your terminal.
 
