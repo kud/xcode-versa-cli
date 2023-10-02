@@ -1,6 +1,6 @@
 {
   "name": "@kud/xcode-versa",
-  "version": "1.0.1-1",
+  "version": "1.0.1-2",
   "description": "A CLI tool for managing multiple Xcode versions, allowing users to easily switch, install, and view the current version.",
   "main": "index.js",
   "bin": {
