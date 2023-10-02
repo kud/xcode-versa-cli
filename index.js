@@ -6,6 +6,7 @@ import yargs from "yargs"
 import { hideBin } from "yargs/helpers"
 import { $ } from "zx"
 import { promises as fs } from "fs"
+import trash from "trash"
 
 $.verbose = false
 
@@ -18,6 +19,16 @@ const fetchXcodeData = async () => {
     throw new Error("Failed to fetch Xcode data")
   }
   return response.json()
+}
+
+const listRemoteVersions = async () => {
+  const data = await fetchXcodeData()
+  const releasedVersions = data.filter(
+    (version) => version.version.release.release,
+  )
+  releasedVersions.forEach((version) => {
+    console.log(`Xcode ${version.version.number} (${version.version.build})`)
+  })
 }
 
 const getCurrentXcodeVersion = async () => {
@@ -127,36 +138,74 @@ const promptXcodeVersions = async (versions) => {
     : null
 }
 
+const listLocalVersions = async () => {
+  const availableVersions = await getXcodeVersionsInApplications()
+  if (availableVersions.length === 0) {
+    console.log("No locally installed Xcode versions found.")
+    return
+  }
+  availableVersions.forEach((version) => {
+    console.log(`${version}`)
+  })
+}
+
+const uninstallVersion = async () => {
+  const availableVersions = (await getXcodeVersionsInApplications()).filter(
+    (version) => version !== SYSTEM_VERSION,
+  )
+  const answers = await inquirer.prompt([
+    {
+      type: "list",
+      name: "xcodeVersion",
+      message: "Which version of Xcode would you like to uninstall?",
+      choices: availableVersions,
+    },
+  ])
+  const chosenVersion = `Xcode ${answers.xcodeVersion}.app`
+  try {
+    await trash(`/Applications/${chosenVersion}`)
+    console.log(chalk.green(`Uninstalled Xcode ${answers.xcodeVersion}`))
+  } catch (error) {
+    console.log(chalk.red(`Error uninstalling Xcode ${answers.xcodeVersion}.`))
+  }
+}
+
 const main = async () => {
-  const argv = yargs(hideBin(process.argv))
-    .options({
-      current: {
-        alias: "c",
-        description: "Display the current Xcode version",
-        type: "boolean",
-      },
-      switch: {
-        alias: "s",
-        description: "Switch to a different Xcode version",
-        type: "boolean",
-      },
+  yargs(hideBin(process.argv))
+    .command("list-remote", "List all remote Xcode versions", {}, async () => {
+      await listRemoteVersions()
     })
+    .command(
+      "list",
+      "List all locally installed Xcode versions",
+      {},
+      async () => {
+        await listLocalVersions()
+      },
+    )
+    .command("current", "Display the current Xcode version", {}, async () => {
+      await displayCurrentVersion()
+    })
+    .command("use", "Change Xcode version", {}, async () => {
+      await switchVersion()
+    })
+    .command("install", "Install a new Xcode version", {}, async () => {
+      const data = await fetchXcodeData()
+      const versionToInstall = await promptXcodeVersions(data)
+      if (versionToInstall) {
+        await promptForDownloadCompletion(versionToInstall)
+      } else {
+        console.log(
+          chalk.red("Invalid version chosen or version not available."),
+        )
+      }
+    })
+    .command("uninstall", "Uninstall a Xcode version", {}, async () => {
+      await uninstallVersion()
+    })
+    .demandCommand(1, "Please specify a command.")
     .help()
     .alias("help", "h").argv
-
-  if (argv.current) {
-    return await displayCurrentVersion()
-  } else if (argv.switch) {
-    return await switchVersion()
-  }
-
-  const data = await fetchXcodeData()
-  const versionToInstall = await promptXcodeVersions(data)
-  if (versionToInstall) {
-    await promptForDownloadCompletion(versionToInstall)
-  } else {
-    console.log(chalk.red("Invalid version chosen or version not available."))
-  }
 }
 
 main()
