@@ -1,7 +1,7 @@
 {
   "name": "@kud/xcode-versa",
   "version": "1.0.1-3",
-  "description": "A CLI tool for managing multiple Xcode versions, allowing users to easily switch, install, and view the current version.",
+  "description": "A CLI tool to manage multiple Xcode versions on macOS.",
   "main": "index.js",
   "bin": {
     "xcode-versa": "./index.js"
@@ -19,5 +19,18 @@
     "yargonaut": "1.1.4",
     "yargs": "17.7.2",
     "zx": "7.2.3"
-  }
+  },
+  "keywords": [
+    "xcode",
+    "xcodes",
+    "macos",
+    "cli-tool",
+    "version-management",
+    "development-tools",
+    "xcode-switcher",
+    "xcode-manager",
+    "ios-development",
+    "apple-development",
+    "software-versioning"
+  ]
 }
