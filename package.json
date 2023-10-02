@@ -1,7 +1,7 @@
 {
   "name": "@kud/xcode-versa",
   "version": "1.0.1-0",
-  "description": "",
+  "description": "A CLI tool for managing multiple Xcode versions, allowing users to easily switch, install, and view the current version.",
   "main": "index.js",
   "bin": {
     "xcode-versa": "./index.js"
@@ -10,8 +10,8 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
-  "license": "ISC",
+  "author": "Erwann Mest <m@kud.io>",
+  "license": "MIT",
   "dependencies": {
     "chalk": "5.3.0",
     "inquirer": "9.2.11",
