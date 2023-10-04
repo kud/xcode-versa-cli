@@ -85,7 +85,15 @@ const switchVersion = async () => {
       ? "Xcode.app"
       : `Xcode ${answers.xcodeVersion}.app`
   try {
+    console.log(`Switching to ${answers.xcodeVersion}...`)
     await $`sudo xcode-select --switch /Applications/${chosenVersion}`
+
+    console.log(`Accepting license...`)
+    await $`sudo xcodebuild -license accept`
+
+    console.log(`Running first launch...`)
+    await $`sudo xcodebuild -runFirstLaunch`
+
     console.log(chalk.green(`Switched to ${answers.xcodeVersion}`))
   } catch (error) {
     console.log(chalk.red(`Error switching to ${answers.xcodeVersion}.`))
