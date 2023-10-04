@@ -18,7 +18,7 @@
 You can install `xcode-versa` via npm:
 
 ```bash
-npm install -g @kud/xcode-versa
+npm install -g @kud/xcode-versa-cli
 ```
 
 ## 🔧 Usage
