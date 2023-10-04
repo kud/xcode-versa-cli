@@ -36,7 +36,7 @@ const getCurrentXcodeVersion = async () => {
     let result = await $`xcode-select -p`
     return result.stdout.includes("Xcode") && !/\d/.test(result.stdout)
       ? SYSTEM_VERSION
-      : result.stdout.split("Xcode ")[1]?.split(".app")[0] || null
+      : result.stdout.split("Xcode-")[1]?.split(".app")[0] || null
   } catch (error) {
     return null
   }
@@ -52,11 +52,11 @@ const extractXcodeVersions = (files) => {
   return files
     .filter(
       (file) =>
-        (file === "Xcode.app" || file.startsWith("Xcode ")) &&
+        (file === "Xcode.app" || file.startsWith("Xcode-")) &&
         !file.startsWith("Xcodes"),
     )
     .map((file) => {
-      const match = file.match(/Xcode (\d+\.\d+)?/)
+      const match = file.match(/Xcode-(\d+\.\d+)?/)
       return match ? match[1] : SYSTEM_VERSION
     })
 }
@@ -83,7 +83,7 @@ const switchVersion = async () => {
   const chosenVersion =
     answers.xcodeVersion === SYSTEM_VERSION
       ? "Xcode.app"
-      : `Xcode ${answers.xcodeVersion}.app`
+      : `Xcode-${answers.xcodeVersion}.app`
   try {
     console.log(`Switching to ${answers.xcodeVersion}...`)
     await $`sudo xcode-select --switch /Applications/${chosenVersion}`
@@ -108,7 +108,7 @@ const promptForDownloadCompletion = async (versionData) => {
   )
   console.log(
     chalk.yellow(
-      `After downloading, please ensure to move the Xcode app into the /Applications directory. Rename the downloaded version with the format 'Xcode <version>.app' (e.g., 'Xcode ${versionData.version.number}.app').`,
+      `After downloading, please ensure to move the Xcode app into the /Applications directory. Rename the downloaded version with the format 'Xcode-<version>.app' (e.g., 'Xcode-${versionData.version.number}.app').`,
     ),
   )
   await inquirer.prompt([
@@ -169,7 +169,7 @@ const uninstallVersion = async () => {
       choices: availableVersions,
     },
   ])
-  const chosenVersion = `Xcode ${answers.xcodeVersion}.app`
+  const chosenVersion = `Xcode-${answers.xcodeVersion}.app`
   try {
     await trash(`/Applications/${chosenVersion}`)
     console.log(chalk.green(`Uninstalled Xcode ${answers.xcodeVersion}`))
