@@ -7,11 +7,22 @@ import { hideBin } from "yargs/helpers"
 import { $ } from "zx"
 import { promises as fs } from "fs"
 import trash from "trash"
+import Table from "cli-table3"
 
 $.verbose = false
 
 const XCODE_DATA_URL = "https://xcodereleases.com/data.json"
 const SYSTEM_VERSION = "System"
+
+const getXcodeAppVersion = async () => {
+  try {
+    const result =
+      await $`/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /Applications/Xcode.app/Contents/Info.plist`
+    return result.stdout.trim()
+  } catch (error) {
+    return null
+  }
+}
 
 const fetchXcodeData = async () => {
   const response = await fetch(XCODE_DATA_URL)
@@ -21,14 +32,57 @@ const fetchXcodeData = async () => {
   return response.json()
 }
 
-const listRemoteVersions = async () => {
+const listRemoteVersions = async (pageNum = 0) => {
   const data = await fetchXcodeData()
   const releasedVersions = data.filter(
     (version) => version.version.release.release,
   )
-  releasedVersions.forEach((version) => {
-    console.log(`Xcode ${version.version.number} (${version.version.build})`)
+  const installedVersions = await getXcodeVersionsInApplications()
+  const currentVersion = await getCurrentXcodeVersion()
+  const systemVersion = await getXcodeAppVersion()
+
+  // Define the table
+  const table = new Table({
+    head: ["Version", "Build", "System", "Installed", "Current"],
+    colAligns: ["left", "center", "center", "center", "center"],
   })
+
+  const pageSize = 10
+  const start = pageSize * pageNum
+  const end = start + pageSize
+  const slicedVersions = releasedVersions.slice(start, end)
+
+  slicedVersions.forEach((version) => {
+    const installed = installedVersions.includes(version.version.number)
+    const isSystem = version.version.number === systemVersion
+    const isCurrent = version.version.number === currentVersion
+
+    table.push([
+      `Xcode ${version.version.number}`,
+      version.version.build,
+      isSystem ? "✅" : "",
+      installed ? "✅" : "",
+      isCurrent ? "✅" : "",
+    ])
+  })
+
+  console.log(table.toString())
+
+  // Handle pagination if there are more rows
+  if (end < releasedVersions.length) {
+    const answers = await inquirer.prompt([
+      {
+        type: "confirm",
+        name: "nextPage",
+        message: "Would you like to view the next page?",
+        default: false,
+      },
+    ])
+
+    if (answers.nextPage) {
+      await listRemoteVersions(pageNum + 1)
+    }
+  }
 }
 
 const getCurrentXcodeVersion = async () => {
@@ -45,20 +99,25 @@ const getCurrentXcodeVersion = async () => {
 const displayCurrentVersion = async () => {
   const currentVersion = await getCurrentXcodeVersion()
   let pathInfo = await $`xcode-select -p`
-  console.log(`${chalk.bold(currentVersion)} (${pathInfo.stdout.trim()})`)
+  console.log(
+    `${chalk.bold(currentVersion)} (${
+      pathInfo.stdout.includes("Xcode.app") ? chalk.italic("(System)") : ""
+    } ${pathInfo.stdout.trim()})`,
+  )
 }
 
-const extractXcodeVersions = (files) => {
-  return files
-    .filter(
-      (file) =>
-        (file === "Xcode.app" || file.startsWith("Xcode-")) &&
-        !file.startsWith("Xcodes"),
-    )
-    .map((file) => {
-      const match = file.match(/Xcode-(\d+\.\d+)?/)
-      return match ? match[1] : SYSTEM_VERSION
-    })
+const extractXcodeVersions = async (files) => {
+  const versions = []
+  for (const file of files.filter(
+    (file) =>
+      (file === "Xcode.app" || file.startsWith("Xcode-")) &&
+      !file.startsWith("Xcodes"),
+  )) {
+    const version =
+      await $`/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /Applications/${file}/Contents/Info.plist`
+    versions.push(version.stdout.trim())
+  }
+  return versions
 }
 
 const getXcodeVersionsInApplications = async () => {
@@ -152,8 +211,21 @@ const listLocalVersions = async () => {
     console.log("No locally installed Xcode versions found.")
     return
   }
+
+  const currentVersion = await getCurrentXcodeVersion()
   availableVersions.forEach((version) => {
-    console.log(`${version}`)
+    if (version === currentVersion) {
+      console.log(
+        chalk.bold(
+          version +
+            ` ${chalk.italic("(current)")} ${
+              version === SYSTEM_VERSION ? chalk.italic("(System)") : ""
+            }`,
+        ),
+      )
+    } else {
+      console.log(version)
+    }
   })
 }
 
