@@ -7,11 +7,22 @@ import { hideBin } from "yargs/helpers"
 import { $ } from "zx"
 import { promises as fs } from "fs"
 import trash from "trash"
+import Table from "cli-table3"
 
 $.verbose = false
 
 const XCODE_DATA_URL = "https://xcodereleases.com/data.json"
 const SYSTEM_VERSION = "System"
+
+const getXcodeAppVersion = async () => {
+  try {
+    const result =
+      await $`/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /Applications/Xcode.app/Contents/Info.plist`
+    return result.stdout.trim()
+  } catch (error) {
+    return null
+  }
+}
 
 const fetchXcodeData = async () => {
   const response = await fetch(XCODE_DATA_URL)
@@ -21,22 +32,66 @@ const fetchXcodeData = async () => {
   return response.json()
 }
 
-const listRemoteVersions = async () => {
+const listRemoteVersions = async (pageNum = 0) => {
   const data = await fetchXcodeData()
   const releasedVersions = data.filter(
     (version) => version.version.release.release,
   )
-  releasedVersions.forEach((version) => {
-    console.log(`Xcode ${version.version.number} (${version.version.build})`)
+  const installedVersions = await getXcodeVersionsInApplications()
+  const currentVersion = await getCurrentXcodeVersion()
+  const systemVersion = await getXcodeAppVersion()
+
+  // Define the table
+  const table = new Table({
+    head: ["Version", "Build", "Installed", "Current", "System"],
+    colAligns: ["left", "center", "center", "center", "center"],
   })
+
+  const pageSize = 10
+  const start = pageSize * pageNum
+  const end = start + pageSize
+  const slicedVersions = releasedVersions.slice(start, end)
+
+  slicedVersions.forEach((version) => {
+    const isInstalled = installedVersions.includes(version.version.number)
+    const isSystem = version.version.number === systemVersion
+    const isCurrent = version.version.number === currentVersion
+
+    table.push([
+      `Xcode ${version.version.number}`,
+      version.version.build,
+      isInstalled ? "✅" : "",
+      isCurrent ? "✅" : "",
+      isSystem ? "✅" : "",
+    ])
+  })
+
+  console.log(table.toString())
+
+  if (end < releasedVersions.length) {
+    const answers = await inquirer.prompt([
+      {
+        type: "confirm",
+        name: "nextPage",
+        message: "Would you like to view the next page?",
+        default: false,
+      },
+    ])
+
+    if (answers.nextPage) {
+      await listRemoteVersions(pageNum + 1)
+    }
+  }
 }
 
 const getCurrentXcodeVersion = async () => {
   try {
     let result = await $`xcode-select -p`
-    return result.stdout.includes("Xcode") && !/\d/.test(result.stdout)
-      ? SYSTEM_VERSION
-      : result.stdout.split("Xcode-")[1]?.split(".app")[0] || null
+    if (result.stdout.includes("Xcode") && !/\d/.test(result.stdout)) {
+      return await getXcodeAppVersion()
+    } else {
+      return result.stdout.split("Xcode-")[1]?.split(".app")[0] || null
+    }
   } catch (error) {
     return null
   }
@@ -45,20 +100,25 @@ const getCurrentXcodeVersion = async () => {
 const displayCurrentVersion = async () => {
   const currentVersion = await getCurrentXcodeVersion()
   let pathInfo = await $`xcode-select -p`
-  console.log(`${chalk.bold(currentVersion)} (${pathInfo.stdout.trim()})`)
+  console.log(
+    `${chalk.bold(currentVersion)} (${
+      pathInfo.stdout.includes("Xcode.app") ? chalk.italic("(System) ") : ""
+    }${pathInfo.stdout.trim()})`,
+  )
 }
 
-const extractXcodeVersions = (files) => {
-  return files
-    .filter(
-      (file) =>
-        (file === "Xcode.app" || file.startsWith("Xcode-")) &&
-        !file.startsWith("Xcodes"),
-    )
-    .map((file) => {
-      const match = file.match(/Xcode-(\d+\.\d+)?/)
-      return match ? match[1] : SYSTEM_VERSION
-    })
+const extractXcodeVersions = async (files) => {
+  const versions = []
+  for (const file of files.filter(
+    (file) =>
+      (file === "Xcode.app" || file.startsWith("Xcode-")) &&
+      !file.startsWith("Xcodes"),
+  )) {
+    const version =
+      await $`/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' /Applications/${file}/Contents/Info.plist`
+    versions.push(version.stdout.trim())
+  }
+  return versions
 }
 
 const getXcodeVersionsInApplications = async () => {
@@ -67,11 +127,36 @@ const getXcodeVersionsInApplications = async () => {
 }
 
 const switchVersion = async () => {
-  const availableVersions = await getXcodeVersionsInApplications()
+  let availableVersions = await getXcodeVersionsInApplications()
+
+  // Sort the versions in descending order
+  availableVersions.sort((a, b) => {
+    // Convert version strings to arrays of numbers [major, minor, patch]
+    const aParts = a.split(".").map((num) => parseInt(num, 10))
+    const bParts = b.split(".").map((num) => parseInt(num, 10))
+
+    // Compare major, minor, and patch versions
+    for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
+      if ((aParts[i] || 0) > (bParts[i] || 0)) return -1
+      if ((aParts[i] || 0) < (bParts[i] || 0)) return 1
+    }
+    return 0
+  })
+
   const currentVersion = await getCurrentXcodeVersion()
-  const formattedChoices = availableVersions.map((version) =>
-    version === currentVersion ? chalk.bold(version) : version,
-  )
+  const systemVersion = await getXcodeAppVersion()
+
+  const formattedChoices = availableVersions.map((version) => {
+    let label = version
+    label += version === systemVersion ? ` ${chalk.italic("(System)")}` : ""
+    label += version === currentVersion ? ` ${chalk.italic("(current)")}` : ""
+
+    return {
+      name: label,
+      value: version,
+    }
+  })
+
   const answers = await inquirer.prompt([
     {
       type: "list",
@@ -80,10 +165,12 @@ const switchVersion = async () => {
       choices: formattedChoices,
     },
   ])
+
   const chosenVersion =
-    answers.xcodeVersion === SYSTEM_VERSION
+    answers.xcodeVersion === systemVersion
       ? "Xcode.app"
       : `Xcode-${answers.xcodeVersion}.app`
+
   try {
     console.log(`Switching to ${answers.xcodeVersion}...`)
     await $`sudo xcode-select --switch /Applications/${chosenVersion}`
@@ -97,6 +184,7 @@ const switchVersion = async () => {
     console.log(chalk.green(`Switched to ${answers.xcodeVersion}`))
   } catch (error) {
     console.log(chalk.red(`Error switching to ${answers.xcodeVersion}.`))
+    console.log(error)
   }
 }
 
@@ -124,14 +212,24 @@ const promptForDownloadCompletion = async (versionData) => {
 const promptXcodeVersions = async (versions) => {
   const installedVersions = await getXcodeVersionsInApplications()
   const releasedVersions = versions.filter(
-    (version) => version.version.release.release,
+    (version) =>
+      version.version.release.release &&
+      !installedVersions.includes(version.version.number),
   )
+
+  // If no versions are available for installation, inform the user and return null
+  if (releasedVersions.length === 0) {
+    console.log(
+      chalk.yellow("All available versions of Xcode are already installed."),
+    )
+    return null
+  }
+
   const choices = releasedVersions.map((version) => {
     const versionStr = `Xcode ${version.version.number} (${version.version.build})`
-    return installedVersions.includes(version.version.number)
-      ? chalk.green(versionStr)
-      : versionStr
+    return versionStr
   })
+
   const answers = await inquirer.prompt([
     {
       type: "list",
@@ -140,7 +238,11 @@ const promptXcodeVersions = async (versions) => {
       choices,
     },
   ])
-  const matchedVersion = answers.xcodeVersion.match(/Xcode (\d+\.\d+)/)
+
+  // Extract the version number from the selected choice
+  const matchedVersion = answers.xcodeVersion.match(
+    /Xcode (\d+\.\d+(?:\.\d+)?)/,
+  )
   return matchedVersion
     ? releasedVersions.find((v) => v.version.number === matchedVersion[1])
     : null
@@ -148,19 +250,45 @@ const promptXcodeVersions = async (versions) => {
 
 const listLocalVersions = async () => {
   const availableVersions = await getXcodeVersionsInApplications()
+
   if (availableVersions.length === 0) {
     console.log("No locally installed Xcode versions found.")
     return
   }
-  availableVersions.forEach((version) => {
-    console.log(`${version}`)
+
+  const currentVersion = await getCurrentXcodeVersion()
+  const systemVersion = await getXcodeAppVersion()
+
+  // Define the table
+  const table = new Table({
+    head: ["Version", "Current", "System"],
+    colAligns: ["left", "center", "center"],
   })
+
+  // Sorting available versions from highest to lowest
+  const sortedVersions = availableVersions.sort(
+    (a, b) => parseFloat(b) - parseFloat(a),
+  )
+
+  sortedVersions.forEach((version) => {
+    const isCurrent = version === currentVersion
+    const isSystem = version === systemVersion
+
+    table.push([
+      `Xcode ${version}`,
+      isCurrent ? "✅" : "",
+      isSystem ? "✅" : "",
+    ])
+  })
+
+  console.log(table.toString())
 }
 
 const uninstallVersion = async () => {
   const availableVersions = (await getXcodeVersionsInApplications()).filter(
     (version) => version !== SYSTEM_VERSION,
   )
+
   const answers = await inquirer.prompt([
     {
       type: "list",
