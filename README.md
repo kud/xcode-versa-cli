@@ -1,5 +1,7 @@
 # 🔄 xcode-versa
 
+⚠️ This project is now deprecated as [xcodes](https://github.com/XcodesOrg/xcodes) does a great job. Thank you all.
+
 `xcode-versa` is a CLI tool designed to provide developers an effortless way to manage multiple Xcode versions on macOS. This tool simplifies the process of switching, installing, and uninstalling Xcode versions, viewing the active version, and initializing downloads for desired versions — all from the comfort of your terminal.
 
 [![asciicast](https://asciinema.org/a/611723.svg)](https://asciinema.org/a/611723)
